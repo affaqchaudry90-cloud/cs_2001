@@ -1,0 +1,26 @@
+name,branch,agent,account_kind,opening_rupees,joint_with,opened_days_ago
+Ayesha Siddiqui,KHI,salaried,current,85000,,0
+Bilal Ahmed,LHR,salaried,savings,110000,,60
+Zainab Qureshi,ISB,salaried,loan,95000,,0
+Hamza Raza,KHI,salaried,current,72000,Ayesha Siddiqui,0
+Sana Malik,LHR,salaried,savings,90000,,90
+Omar Mirza,ISB,salaried,loan,88000,,0
+Hina Farooq,KHI,salaried,current,78000,,0
+Imran Saeed,LHR,salaried,savings,105000,,0
+Javeria Tariq,ISB,salaried,loan,92000,,0
+Saad Chaudhry,KHI,salaried,current,68000,,0
+Maham Khan,LHR,salaried,loan,84000,,0
+Zoya Ali,ISB,salaried,current,74000,,0
+Faisal Butt,KHI,salaried,current,81000,,0
+Usman Iqbal,ISB,student,youth,15000,,45
+Laiba Sheikh,KHI,student,youth,18000,,0
+Taha Javed,LHR,student,youth,12500,,0
+Nida Raza,ISB,student,youth,14000,,0
+Eman Zaidi,KHI,student,youth,16500,,0
+Danish Butt,KHI,merchant,current,120000,,0
+Rabia Chaudhry,LHR,merchant,current,95000,,0
+Kamran Sheikh,ISB,merchant,current,135000,,0
+Tariq Hashmi,KHI,merchant,current,110000,,0
+Farhan Javed,KHI,fraudster,current,65000,,0
+Noman Hashmi,LHR,fraudster,current,70000,,0
+Waleed Gillani,ISB,fraudster,current,75000,,0

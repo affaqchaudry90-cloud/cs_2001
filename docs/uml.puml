@@ -1,0 +1,546 @@
+@startuml LEDGER
+set namespaceSeparator none
+left to right direction
+' CS 2001 Course Project - Idea 3: LEDGER  (UML v5 - synced 1-to-1 with final code)
+' Stretch goals: (1) joint accounts  (2) interest back-dating via recursion
+'                (3) both PaymentQueue and UndoStack
+' Blue = Chaudry Affaq Ur Rehman (29020161), Amber = Ahmed Mohammad Iqbal (28020022)
+
+skinparam classAttributeIconSize 0
+skinparam shadowing false
+skinparam packageStyle rectangle
+skinparam classFontStyle bold
+skinparam defaultFontName DejaVu Sans
+skinparam classBorderColor #374151
+skinparam ArrowColor #374151
+hide circle
+hide empty members
+
+title LEDGER - UML Class Diagram v5 (CS 2001 Fall 2026)
+
+package "ledger/money.py" {
+  class Money <<frozen dataclass, total_ordering>> #DBEAFE {
+    + paisa: int
+    --
+    {static} + from_rupees(rupees: float) : Money  «classmethod»
+    + __add__(other: Money) : Money
+    + __sub__(other: Money) : Money
+    + __mul__(factor: float) : Money
+    + __lt__(other: Money) : bool
+    + __eq__(other: object) : bool  «auto»
+    + __hash__() : int  «auto»
+    + __str__() : str
+    + __repr__() : str  «auto»
+    - __post_init__() : None
+  }
+}
+
+package "ledger/accounts.py" {
+  class InterestBearing <<mixin>> #DBEAFE {
+    {static} + RATE: float = 0.0
+    --
+    + annual_rate: float  «property»
+    + daily_interest() : Money  «overrides Account»
+    + backdated_interest(days: int) : Money  «overrides Account»
+    - _compound(paisa: int, days: int) : int  «recursive»
+  }
+  abstract class Account #DBEAFE {
+    - _iban: str
+    - _holder_ids: list[str]
+    - _balance: Money
+    - _frozen: bool
+    - _frozen_reason: str
+    --
+    + __init__(iban: str, holder_id: str)
+    + iban: str  «property»
+    + holders: tuple[str, ...]  «property»
+    + balance: Money  «property»
+    + is_frozen: bool  «property»
+    + frozen_reason: str  «property»
+    + add_holder(customer_id: str) : None
+    + is_joint() : bool
+    + deposit(amount: Money) : None
+    + withdraw(amount: Money) : None
+    + freeze(reason: str) : None
+    + daily_interest() : Money  «Money(0)»
+    + backdated_interest(days: int) : Money  «Money(0)»
+    {abstract} + can_withdraw(amount: Money) : bool
+    {abstract} + monthly_fee() : Money
+    + __eq__(other: object) : bool  «by IBAN»
+    + __hash__() : int  «by IBAN»
+    + __lt__(other: Account) : bool  «by balance»
+    + __repr__() : str
+  }
+  class CurrentAccount #DBEAFE {
+    {static} + FEE: Money = Rs 150
+    --
+    + can_withdraw(amount: Money) : bool
+    + monthly_fee() : Money
+  }
+  class SavingsAccount #DBEAFE {
+    {static} + RATE: float = 0.08
+    {static} + MIN_BALANCE: Money = Rs 500
+    --
+    + can_withdraw(amount: Money) : bool
+    + monthly_fee() : Money
+  }
+  class YouthSavingsAccount #DBEAFE {
+    {static} + RATE: float = 0.10
+    {static} + MIN_BALANCE: Money = Rs 0
+    {static} + MAX_WITHDRAWAL: Money = Rs 5,000
+    --
+    + can_withdraw(amount: Money) : bool
+    + withdraw(amount: Money) : None
+  }
+  class LoanAccount #DBEAFE {
+    - _principal: Money
+    - _instalment: Money
+    --
+    + __init__(iban: str, holder_id: str, principal: Money, instalment: Money)
+    + principal: Money  «property»
+    + instalment: Money  «property»
+    + remaining() : Money
+    + is_paid_off() : bool
+    + deposit(amount: Money) : None
+    + can_withdraw(amount: Money) : bool
+    + monthly_fee() : Money
+  }
+
+  note bottom of SavingsAccount
+    class SavingsAccount(InterestBearing, Account)
+    MRO: SavingsAccount → InterestBearing → Account → ABC → object
+  end note
+}
+
+package "ledger/bank.py" {
+  class Bank #DBEAFE {
+    - _name: str
+    - _accounts: dict[str, Account]
+    - _customers: dict[str, Customer]
+    - _branches: dict[str, Branch]
+    - _log: TransactionLog
+    - _undo: UndoStack
+    - _next_account: int
+    - _next_tx: int
+    - _opening_deposits: Money
+    - _transfers_tried: int
+    - _transfers_done: int
+    - _rollbacks: int
+    --
+    + __init__(name: str)
+    + open_branch(code: str, city: str) : Branch
+    + add_customer(customer: Customer) : None
+    + open_account(holders: list[Customer], kind: str, opening: Money) : Account  «joint if 2+ holders»
+    + open_loan(customer: Customer, principal: Money, instalment: Money) : LoanAccount
+    + next_tx_id() : int
+    + transfer(from_iban: str, to_iban: str, amount: Money, count_stats: bool = True) : None  «atomic»
+    + execute(tx: Transaction) : bool
+    + rollback_last() : Transaction
+    + backdate_interest(iban: str, from_day: int, today: int) : InterestCredit | None
+    + freeze(iban: str, reason: str) : None
+    + log: TransactionLog  «property»
+    + opening_deposits: Money  «property»
+    + transfer_counts() : tuple[int, int, int]  «tried, done, rolled back»
+    + customers() : list[Customer]
+    + __getitem__(iban: str) : Account
+    + __contains__(iban: str) : bool
+    + __len__() : int
+    + __iter__() : Iterator[Account]
+    + __repr__() : str
+  }
+  class Customer #DBEAFE {
+    - _customer_id: str
+    - _name: str
+    - _branch: Branch
+    - _accounts: list[Account]
+    --
+    + __init__(customer_id: str, name: str, branch: Branch)
+    + customer_id: str  «property»
+    + name: str  «property»
+    + branch: Branch  «property»
+    + add_account(account: Account) : None
+    + accounts() : list[Account]  «copy»
+    + joint_accounts() : list[Account]
+    + net_worth() : Money
+    + __len__() : int
+    + __repr__() : str
+  }
+  class Branch #DBEAFE {
+    - _code: str
+    - _city: str
+    --
+    + __init__(code: str, city: str)
+    + code: str  «property»
+    + city: str  «property»
+    + __repr__() : str
+  }
+}
+
+package "ledger/transactions.py" {
+  abstract class Transaction <<frozen dataclass>> #FEF3C7 {
+    + tx_id: int
+    + day: int
+    + amount: Money
+    --
+    {abstract} + apply(bank: Bank) : None
+    {abstract} + reverse(bank: Bank) : None
+    {abstract} + sender() : str | None
+    {abstract} + receiver() : str | None
+    + accounts() : tuple[str, ...]
+    - __post_init__() : None
+  }
+  class Deposit #FEF3C7 {
+    + iban: str
+    --
+    + apply(bank: Bank) : None
+    + reverse(bank: Bank) : None
+    + sender() : None
+    + receiver() : str
+  }
+  class Withdrawal #FEF3C7 {
+    + iban: str
+    --
+    + apply(bank: Bank) : None
+    + reverse(bank: Bank) : None
+    + sender() : str
+    + receiver() : None
+  }
+  class Transfer #FEF3C7 {
+    + from_iban: str
+    + to_iban: str
+    --
+    + apply(bank: Bank) : None
+    + reverse(bank: Bank) : None
+    + sender() : str
+    + receiver() : str
+    - __post_init__() : None
+  }
+  class FeeCharge #FEF3C7 {
+    + iban: str
+    + reason: str
+    --
+    + apply(bank: Bank) : None
+    + reverse(bank: Bank) : None
+    + sender() : str
+    + receiver() : None
+  }
+  class InterestCredit #FEF3C7 {
+    + iban: str
+    + backdated_from: int | None = None
+    --
+    + apply(bank: Bank) : None
+    + reverse(bank: Bank) : None
+    + sender() : None
+    + receiver() : str
+  }
+  class TransactionLog #FEF3C7 {
+    - _entries: list[Transaction]
+    - _rejected: list[tuple[Transaction, str]]
+    - _reversed: list[Transaction]
+    --
+    + append(tx: Transaction) : None
+    + reject(tx: Transaction, reason: str) : None
+    + mark_reversed(tx: Transaction) : None
+    + between(start: int, end: int) : Iterator[Transaction]  «generator»
+    + effective() : Iterator[Transaction]  «generator»
+    + rejected() : list[tuple[Transaction, str]]
+    + __getitem__(day: int | slice) : list[Transaction]
+    + __len__() : int
+    + __iter__() : LogIterator
+    + __repr__() : str
+  }
+  class LogIterator <<iterator>> #FEF3C7 {
+    - _entries: list[Transaction]
+    - _index: int
+    --
+    + __iter__() : LogIterator
+    + __next__() : Transaction
+    + __repr__() : str
+  }
+}
+
+package "ledger/scheduler.py" {
+  class ScheduledPayment <<frozen dataclass>> #FEF3C7 {
+    + from_iban: str
+    + to_iban: str
+    + amount: Money
+    + due_day: int
+    + attempts: int = 0
+    --
+    + with_penalty(penalty: Money) : ScheduledPayment
+  }
+  class PaymentQueue <<ADT · Queue (FIFO)>> #FEF3C7 {
+    - _items: list[ScheduledPayment]
+    - _front: int
+    --
+    + enqueue(payment: ScheduledPayment) : None  «O(1)»
+    + dequeue() : ScheduledPayment  «O(1)»
+    + peek() : ScheduledPayment  «O(1)»
+    + is_empty() : bool  «O(1)»
+    + __len__() : int  «O(1)»
+    + __repr__() : str
+  }
+  class UndoStack <<ADT · Stack (LIFO)>> #FEF3C7 {
+    - _items: list[Transaction]
+    --
+    + push(tx: Transaction) : None  «O(1)»
+    + pop() : Transaction  «O(1)»
+    + peek() : Transaction  «O(1)»
+    + is_empty() : bool  «O(1)»
+    + __len__() : int  «O(1)»
+    + __repr__() : str
+  }
+}
+
+package "ledger/agents.py" {
+  abstract class CustomerAgent #FEF3C7 {
+    - _customer: Customer
+    - _iban: str
+    - _shops: list[str]
+    - _rng: random.Random
+    --
+    + __init__(customer: Customer, iban: str, shops: list[str], rng: random.Random)
+    + customer: Customer  «property»
+    + is_fraudster: bool  «property»
+    {abstract} + act(day: int, bank: Bank) : list[Transaction]
+    + __repr__() : str
+  }
+  class SalariedAgent #FEF3C7 {
+    - _salary: Money
+    - _payday: int
+    - _rent: Money
+    --
+    + act(day: int, bank: Bank) : list[Transaction]
+  }
+  class StudentAgent #FEF3C7 {
+    - _allowance: Money
+    --
+    + act(day: int, bank: Bank) : list[Transaction]
+  }
+  class MerchantAgent #FEF3C7 {
+    - _daily_sales: Money
+    --
+    + act(day: int, bank: Bank) : list[Transaction]
+  }
+  class FraudsterAgent #FEF3C7 {
+    - _mules: list[str]
+    - _strategy: str
+    - _attack_day: int
+    --
+    + __init__(customer: Customer, iban: str, shops: list[str], rng: random.Random, mules: list[str], strategy: str, attack_day: int)
+    + is_fraudster: bool  «property»
+    + act(day: int, bank: Bank) : list[Transaction]
+  }
+}
+
+package "ledger/fraud.py" {
+  class FraudMonitor #FEF3C7 {
+    - _rules: list[Rule]
+    - _flagged: dict[str, str]
+    --
+    + __init__(rules: list[Rule])
+    + scan(day: int, bank: Bank) : list[str]
+    - _check(tx: Transaction, log: TransactionLog) : None  «raises SuspiciousActivityError»
+    + flagged() : dict[str, str]  «copy»
+    + __repr__() : str
+  }
+  abstract class Rule #FEF3C7 {
+    --
+    + name: str  «property»
+    {abstract} + check(tx: Transaction, log: TransactionLog) : bool
+    + __repr__() : str
+  }
+  class VelocityRule #FEF3C7 {
+    - _max_per_day: int
+    --
+    + check(tx: Transaction, log: TransactionLog) : bool
+  }
+  class LargeAmountRule #FEF3C7 {
+    - _threshold: Money
+    --
+    + check(tx: Transaction, log: TransactionLog) : bool
+  }
+  class RoundTripRule #FEF3C7 {
+    - _max_depth: int
+    --
+    + check(tx: Transaction, log: TransactionLog) : bool
+    - _edges(day: int, log: TransactionLog) : dict[str, list[str]]
+    - _trace(current: str, target: str, edges: dict[str, list[str]], depth: int, seen: set[str]) : bool  «recursive»
+  }
+}
+
+package "ledger/reports.py" {
+  interface Reportable #DBEAFE {
+    {abstract} + report_lines() : list[str]
+  }
+  class Statement #DBEAFE {
+    - _account: Account
+    - _entries: list[Transaction]
+    --
+    + __init__(account: Account, log: TransactionLog)
+    + closing_balance() : Money
+    + report_lines() : list[str]
+    + __repr__() : str
+  }
+  class AuditReport #DBEAFE {
+    - _bank: Bank
+    - _monitor: FraudMonitor
+    - _fraudsters: set[str]
+    --
+    + __init__(bank: Bank, monitor: FraudMonitor, fraudsters: set[str])
+    + check_invariant() : None  «assert»
+    + top_customers(n: int) : list[Customer]
+    + frozen_accounts() : list[str]
+    + precision_recall() : tuple[float, float]
+    + report_lines() : list[str]
+    + __repr__() : str
+  }
+}
+
+package "ledger/files.py" {
+  class CustomerSpec <<frozen dataclass>> #DBEAFE {
+    + name: str
+    + branch: str
+    + agent: str
+    + account_kind: str
+    + opening: Money
+    + joint_with: str = ""
+    + opened_days_ago: int = 0
+  }
+  note bottom of CustomerSpec
+    Module-level functions in ledger/files.py:
+    + load_customers(path: str) : list[CustomerSpec]
+    + write_statement(path: str, statement: Statement) : None
+  end note
+}
+
+package "ledger/simulation.py" {
+  class Simulation #D1FAE5 {
+    - _bank: Bank
+    - _agents: list[CustomerAgent]
+    - _monitor: FraudMonitor
+    - _payments: PaymentQueue
+    - _standing: list[ScheduledPayment]
+    - _fraudsters: set[str]
+    - _days: int
+    - _rng: random.Random
+    --
+    + __init__(specs: list[CustomerSpec], days: int, seed: int)
+    + bank: Bank  «property»
+    + run() : AuditReport
+    + run_day(day: int) : None
+    + days() : Iterator[int]  «generator»
+    - _open_spec_account(spec: CustomerSpec, customer: Customer, holders: list[Customer]) : str
+    - _setup(specs: list[CustomerSpec]) : None
+    - _process_payments(day: int) : None
+    - _close_day(day: int) : None
+    + __repr__() : str
+  }
+}
+
+package "ledger/exceptions.py" {
+  class Exception <<built-in>> #F3F4F6
+  class LedgerError #FEE2E2
+  class AccountError #FEE2E2
+  class InsufficientFundsError #FEE2E2
+  class FrozenAccountError #FEE2E2
+  class UnknownAccountError #FEE2E2
+  class WithdrawalLimitError #FEE2E2
+  class TransactionError #FEE2E2
+  class NegativeAmountError #FEE2E2
+  class RollbackError #FEE2E2
+  class FraudError #FEE2E2
+  class SuspiciousActivityError #FEE2E2
+  class ConfigError #FEE2E2
+  class EmptyQueueError #FEE2E2
+  class EmptyStackError #FEE2E2
+}
+
+' ---------- inheritance (is a) ----------
+Account <|-- CurrentAccount
+Account <|-- SavingsAccount
+InterestBearing <|-- SavingsAccount
+SavingsAccount <|-- YouthSavingsAccount
+Account <|-- LoanAccount
+Transaction <|-- Deposit
+Transaction <|-- Withdrawal
+Transaction <|-- Transfer
+Transaction <|-- FeeCharge
+Transaction <|-- InterestCredit
+CustomerAgent <|-- SalariedAgent
+CustomerAgent <|-- StudentAgent
+CustomerAgent <|-- MerchantAgent
+CustomerAgent <|-- FraudsterAgent
+Rule <|-- VelocityRule
+Rule <|-- LargeAmountRule
+Rule <|-- RoundTripRule
+Exception <|-- LedgerError
+LedgerError <|-- AccountError
+AccountError <|-- InsufficientFundsError
+AccountError <|-- FrozenAccountError
+AccountError <|-- UnknownAccountError
+AccountError <|-- WithdrawalLimitError
+LedgerError <|-- TransactionError
+TransactionError <|-- NegativeAmountError
+TransactionError <|-- RollbackError
+LedgerError <|-- FraudError
+FraudError <|-- SuspiciousActivityError
+LedgerError <|-- ConfigError
+LedgerError <|-- EmptyQueueError
+LedgerError <|-- EmptyStackError
+
+' ---------- realization (implements interface) ----------
+Reportable <|.. Statement
+Reportable <|.. AuditReport
+
+' ---------- composition (owns) ----------
+Bank "1" *-- "0..*" Account
+Bank "1" *-- "1..*" Branch
+Bank "1" *-- "1" TransactionLog
+Bank "1" *-- "1" UndoStack
+Simulation "1" *-- "1" Bank
+Simulation "1" *-- "1" FraudMonitor
+Simulation "1" *-- "1" PaymentQueue
+FraudMonitor "1" *-- "1..*" Rule
+
+' ---------- aggregation (has) ----------
+Customer "1..*" o-- "0..*" Account : holds\n(joint = many-to-many)
+Bank "1" o-- "0..*" Customer
+Simulation "1" o-- "1..*" CustomerAgent
+Simulation "1" o-- "0..*" ScheduledPayment : standing orders
+TransactionLog "1" o-- "0..*" Transaction
+PaymentQueue "1" o-- "0..*" ScheduledPayment
+UndoStack "1" o-- "0..*" Transaction
+
+' ---------- association (knows) ----------
+Customer "0..*" --> "1" Branch : home branch
+CustomerAgent "1" --> "1" Customer : acts for
+Statement "0..*" --> "1" Account : describes
+AuditReport "1" --> "1" Bank : audits
+AuditReport "1" --> "1" FraudMonitor : reads
+
+' ---------- dependency (uses / creates) ----------
+CustomerAgent ..> Transaction : <<creates>>
+Transaction ..> Bank : <<applied to>>
+TransactionLog ..> LogIterator : <<creates>>
+Simulation ..> CustomerSpec : <<reads>>
+Simulation ..> AuditReport : <<creates>>
+
+legend right
+  |= Symbol |= Meaning |
+  | <&#124;-- | is a (inherits; triangle at parent) |
+  | <&#124;.. | implements interface (realization) |
+  | *-- | owns (composition; filled diamond) |
+  | o-- | has (aggregation; hollow diamond) |
+  | --> | knows (association) |
+  | ..> | uses / creates (dependency) |
+  | + / - | public / private |
+  | //italic// | abstract |
+  | __underline__ | class attribute |
+  |<#DBEAFE> blue | Chaudry Affaq Ur Rehman (29020161) |
+  |<#FEF3C7> amber | Ahmed Mohammad Iqbal (28020022) |
+  |<#D1FAE5> green | shared |
+  |<#FEE2E2> red | exceptions |
+endlegend
+
+@enduml
