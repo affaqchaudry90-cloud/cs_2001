@@ -1,3 +1,5 @@
+from typing import Any
+
 """Domain exception hierarchy for LEDGER."""
 
 
@@ -8,27 +10,24 @@ class LedgerError(Exception):
         """Return a concise representation of this error."""
         return f"{type(self).__name__}({str(self)!r})"
 
-
 class AccountError(LedgerError):
     """Base exception for account-level failures."""
-
-
 class InsufficientFundsError(AccountError):
     """Raised when a withdrawal exceeds available funds."""
 
-    def __init__(self, balance: "Money", amount: "Money") -> None:
+    def __init__(self, balance: Any , amount: Any) -> None:
         """Record available balance and requested amount."""
         self._balance = balance
         self._amount = amount
         super().__init__(f"insufficient funds: have {balance}, need {amount}")
 
     @property
-    def balance(self) -> "Money":
+    def balance(self) -> Any:
         """Available balance when the withdrawal failed."""
         return self._balance
 
     @property
-    def amount(self) -> "Money":
+    def amount(self) -> Any:
         """Requested withdrawal amount."""
         return self._amount 
 
@@ -82,19 +81,19 @@ class UnknownAccountError(AccountError):
 class WithdrawalLimitError(AccountError):
     """Raised when a withdrawal exceeds a per-transaction cap."""
 
-    def __init__(self, amount: "Money", limit: "Money") -> None:
+    def __init__(self, amount: Any, limit: Any) -> None:
         """Record requested amount and configured limit."""
         self._amount = amount
         self._limit = limit
         super().__init__(f"{amount} exceeds withdrawal cap of {limit}")
 
     @property
-    def amount(self) -> "Money":
+    def amount(self) -> Any:
         """Requested withdrawal amount."""
         return self._amount
 
     @property
-    def limit(self) -> "Money":
+    def limit(self) -> Any:
         """Maximum single-withdrawal limit."""
         return self._limit
 
